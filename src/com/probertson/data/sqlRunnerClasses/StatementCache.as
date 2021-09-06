@@ -65,7 +65,7 @@ package com.probertson.data.sqlRunnerClasses
 			}
 			else
 			{
-				result = _cache[conn]; 
+				result = _cache[conn] as SQLStatement; 
 			}
 			
 			if (result == null)
