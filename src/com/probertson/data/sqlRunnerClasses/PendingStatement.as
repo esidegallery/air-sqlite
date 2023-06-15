@@ -66,6 +66,12 @@ package com.probertson.data.sqlRunnerClasses
 			_pool = pool;
 			
 			var stmt:SQLStatement = _cache.getStatementForConnection(conn);
+
+			if (stmt.executing)
+			{
+				return;
+			}
+
 			stmt.addEventListener(SQLEvent.RESULT, stmt_result);
 			stmt.addEventListener(SQLErrorEvent.ERROR, stmt_error);
 			
