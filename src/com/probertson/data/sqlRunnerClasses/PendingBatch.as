@@ -31,11 +31,10 @@ package com.probertson.data.sqlRunnerClasses
 	import flash.errors.SQLError;
 	import flash.events.SQLErrorEvent;
 	import flash.events.SQLEvent;
-	
+
 	public class PendingBatch
 	{
-		
-		public function PendingBatch(batch:Vector.<SQLStatement>, parameters:Vector.<Object>, resultHandler:Function, errorHandler:Function, progressHandler:Function=null)
+		public function PendingBatch(batch:Vector.<SQLStatement>, parameters:Vector.<Object>, resultHandler:Function, errorHandler:Function, progressHandler:Function = null)
 		{
 			_batch = batch;
 			_parameters = parameters;
@@ -43,10 +42,9 @@ package com.probertson.data.sqlRunnerClasses
 			_errorHandler = errorHandler;
 			_progressHandler = progressHandler;
 		}
-		
-		
+
 		// ------- Member vars -------
-		
+
 		private var _batch:Vector.<SQLStatement>;
 		private var _parameters:Vector.<Object>;
 		private var _results:Vector.<SQLResult>;
@@ -60,22 +58,21 @@ package com.probertson.data.sqlRunnerClasses
 		private var _numSteps:int = 0;
 		private var _stepsCompleted:int = 0;
 		private var _error:SQLError;
-		
-		
+
 		// ------- Public methods -------
-		
+
 		public function executeWithConnection(pool:ConnectionPool, connection:SQLConnection):void
 		{
 			if (_batch == null || _batch.length == 0)
 			{
 				return;
 			}
-			
+
 			_pool = pool;
 			_conn = connection;
 			_conn.addEventListener(SQLErrorEvent.ERROR, conn_error);
 			_numStatements = _numSteps = _batch.length;
-			
+
 			if (_numStatements > 1)
 			{
 				_numSteps += 2; // 2 additional steps for opening and finishing transaction
@@ -86,34 +83,28 @@ package com.probertson.data.sqlRunnerClasses
 				executeStatements();
 			}
 		}
-		
-		
+
 		// ------- Executing batch -------
-		
+
 		private function beginTransaction():void
 		{
 			_conn.addEventListener(SQLEvent.BEGIN, conn_begin);
 			_conn.begin(SQLTransactionLockType.IMMEDIATE);
 		}
-		
-		
-		private function conn_begin(event:SQLEvent):void 
+
+		private function conn_begin(event:SQLEvent):void
 		{
 			_conn.removeEventListener(SQLEvent.BEGIN, conn_begin);
-			
 			callProgressHandler();
-			
 			executeStatements();
 		}
-		
-		
+
 		private function executeStatements():void
 		{
 			_results = new Vector.<SQLResult>();
 			executeNextStatement();
 		}
-		
-		
+
 		private function executeNextStatement():void
 		{
 			var stmt:SQLStatement = _batch.shift();
@@ -121,7 +112,7 @@ package com.probertson.data.sqlRunnerClasses
 			{
 				stmt.sqlConnection = _conn;
 			}
-			
+
 			stmt.clearParameters();
 			var params:Object = _parameters.shift();
 			if (params != null)
@@ -131,25 +122,24 @@ package com.probertson.data.sqlRunnerClasses
 					stmt.parameters[":" + prop] = params[prop];
 				}
 			}
-			
+
 			stmt.addEventListener(SQLEvent.RESULT, stmt_result);
 			stmt.addEventListener(SQLErrorEvent.ERROR, conn_error);
 			stmt.execute();
 		}
-		
-		
-		private function stmt_result(event:SQLEvent):void 
+
+		private function stmt_result(event:SQLEvent):void
 		{
 			var stmt:SQLStatement = event.target as SQLStatement;
 			stmt.removeEventListener(SQLEvent.RESULT, stmt_result);
 			stmt.removeEventListener(SQLErrorEvent.ERROR, conn_error);
-			
+
 			_results[_results.length] = stmt.getResult();
-			
+
 			_statementsCompleted++;
-			
+
 			callProgressHandler();
-			
+
 			if (_statementsCompleted < _numStatements)
 			{
 				executeNextStatement();
@@ -166,38 +156,45 @@ package com.probertson.data.sqlRunnerClasses
 				}
 			}
 		}
-		
-		
+
 		private function commitTransaction():void
 		{
-			_conn.addEventListener(SQLEvent.COMMIT, conn_commit);
-			_conn.commit();
+			if (_conn != null)
+			{
+				_conn.addEventListener(SQLEvent.COMMIT, conn_commit);
+				_conn.commit();
+			}
 		}
-		
-		
-		private function conn_commit(event:SQLEvent):void 
+
+		private function conn_commit(event:SQLEvent):void
 		{
-			_conn.removeEventListener(SQLEvent.COMMIT, conn_commit);
-			
+			if (_conn != null)
+			{
+				_conn.removeEventListener(SQLEvent.COMMIT, conn_commit);
+			}
+
 			callProgressHandler();
-			
+
 			finish();
 		}
-		
-		
+
 		private function finish():void
 		{
-			_pool.returnConnection(_conn);
-			
+			if (_pool != null)
+			{
+				_pool.returnConnection(_conn);
+			}
+
 			if (_resultHandler != null)
+			{
 				_resultHandler(_results);
-			
-			cleanUp();	
+			}
+
+			cleanUp();
 		}
-		
-		
+
 		// --- Error handling ---
-		
+
 		private function conn_error(event:SQLErrorEvent):void
 		{
 			if (event.target is SQLStatement)
@@ -205,12 +202,11 @@ package com.probertson.data.sqlRunnerClasses
 				SQLStatement(event.target).removeEventListener(SQLEvent.RESULT, stmt_result);
 				SQLStatement(event.target).removeEventListener(SQLErrorEvent.ERROR, conn_error);
 			}
-			
+
 			_error = event.error;
 			rollbackTransaction();
 		}
-		
-		
+
 		private function rollbackTransaction():void
 		{
 			if (_conn.inTransaction)
@@ -223,42 +219,46 @@ package com.probertson.data.sqlRunnerClasses
 				_finishError();
 			}
 		}
-		
-		
-		private function conn_rollback(event:SQLEvent):void 
+
+		private function conn_rollback(event:SQLEvent):void
 		{
 			_conn.removeEventListener(SQLEvent.ROLLBACK, conn_rollback);
 			_finishError();
 		}
-		
-		
+
 		private function _finishError():void
 		{
-			_pool.returnConnection(_conn);
-			
+			if (_pool != null)
+			{
+				_pool.returnConnection(_conn);
+			}
+
 			if (_errorHandler != null)
+			{
 				_errorHandler(_error);
-			
+			}
+
 			cleanUp();
 		}
-		
-		
+
 		// --- Utility ---
-		
+
 		private function callProgressHandler():void
 		{
 			_stepsCompleted++;
-			
+
 			if (_progressHandler != null)
 			{
 				_progressHandler(_stepsCompleted, _numSteps);
 			}
 		}
-		
-		
+
 		private function cleanUp():void
 		{
+			_conn.removeEventListener(SQLEvent.BEGIN, conn_begin);
+			_conn.removeEventListener(SQLEvent.COMMIT, conn_commit);
 			_conn.removeEventListener(SQLErrorEvent.ERROR, conn_error);
+			_conn.removeEventListener(SQLEvent.ROLLBACK, conn_rollback);
 			_conn = null;
 			_pool = null;
 			_batch = null;
